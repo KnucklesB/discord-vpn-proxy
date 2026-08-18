@@ -1,74 +1,51 @@
 # Roteando o Discord por um proxy VPN self-hosted (Portainer + Gluetun + ProtonVPN + Vencord)
 
-O discord teve as suas transmissões de tela e compartilhamento de webcams banidos
-por causa da medida cautelar da [ANPD (Autoridade Nacional de Proteção de Dados)](https://www.gov.br/anpd/pt-br).
-Como eu preciso do dessas ferramentas para trabalhos e laser, resolvi criar
-uma maneira de burlar isso, sem o uso de VPS(no meu computador inteiro).
-testei varias abordagens (cloudflared não serve pra isso, proxies públicos são furada),
-cheguei numa combinação que funciona de verdade: **Portainer + Gluetun +
-ProtonVPN (plano grátis) + um plugin próprio pro Vencord**.
+O Discord teve suas transmissões de tela e o compartilhamento de webcams banidos por causa da medida cautelar da [ANPD (Autoridade Nacional de Proteção de Dados)](https://www.gov.br/anpd/pt-br).
 
-Esse repositório documenta o processo do zero, incluindo os erros que eu
-tomei no caminho, porque na hora de debugar isso foi o que mais me ajudou.
+Como eu preciso dessas ferramentas para trabalho e lazer, resolvi criar uma maneira de contornar essa restrição sem usar uma VPS ou uma VPN no computador inteiro.
+
+Testei várias abordagens (Cloudflared não serve para isso, proxies públicos são furada) e cheguei a uma combinação que funciona de verdade: **Portainer + Gluetun + ProtonVPN (plano grátis) + um plugin próprio para o Vencord**.
+
+Este repositório documenta o processo desde o zero, incluindo os erros que enfrentei no caminho, porque, na hora de debugar, foi justamente isso que mais me ajudou.
 
 ## O que essa stack faz
 
-- Sobe um container `gluetun` no meu servidor doméstico (gerenciado pelo
-  Portainer) que conecta num servidor da ProtonVPN e expõe um proxy SOCKS5
-  na minha rede local.
-- Um plugin de Vencord (`ProxySettings`) aponta **só o tráfego de rede do
-  Discord** pra esse proxy, nada mais no meu PC ou na minha rede é afetado.
-- Resultado: o Discord passa a enxergar a internet a partir do IP do
-  servidor VPN, sem eu precisar de VPN paga ou ficar sofrendo por causa do ping alto e baixa velocidade no computador inteiro.
+* Sobe um container `gluetun` no meu servidor doméstico (gerenciado pelo Portainer), que se conecta a um servidor da ProtonVPN e expõe um proxy SOCKS5 na minha rede local.
+* Um plugin do Vencord (`ProxySettings`) aponta **somente o tráfego de rede do Discord** para esse proxy. Nada mais no meu PC ou na minha rede é afetado.
+* Resultado: o Discord passa a enxergar a internet a partir do IP do servidor VPN, sem eu precisar usar uma VPN paga no computador inteiro ou sofrer com ping alto e baixa velocidade em toda a conexão.
 
 ## O que essa stack **não** resolve
 
-Documentando aqui pra quem for usar isso não ter surpresa:
+Documentando aqui para que quem for usar isso não tenha surpresas:
 
-- **Chamada de voz pode não seguir o proxy.** O Discord usa WebRTC pra
-  áudio/vídeo, e é um comportamento conhecido do Chromium (base do Electron)
-  esse tráfego às vezes ignorar o proxy configurado no app. Ou seja: API,
-  gateway e conteúdo carregado pelo IP do proxy, mas a chamada de voz pode
-  continuar medindo latência real e escolhendo servidor pela minha
-  localização de verdade.
-- **Plano grátis da ProtonVPN = países fixos e sem escolha manual de
-  servidor.** Não dá pra escolher endpoint específico, só o país (via
-  `SERVER_COUNTRIES`), e só entre os países liberados no plano grátis:
-  Canadá, EUA, México, Holanda, Noruega, Polônia, Romênia, Cingapura, Suíça
-  e Japão.
-- **Um dispositivo por vez.** O plano grátis da Proton só aceita uma
-  conexão simultânea, se tiver o app oficial logado em outro lugar, o
-  túnel vai falhar a autenticação.
+* **Chamadas de voz podem não seguir o proxy.** O Discord usa WebRTC para áudio/vídeo, e é um comportamento conhecido do Chromium (base do Electron) que esse tráfego às vezes ignore o proxy configurado no aplicativo. Ou seja: API, gateway e conteúdo são carregados pelo IP do proxy, mas a chamada de voz pode continuar medindo a latência real e escolhendo o servidor com base na minha localização de verdade.
+* **Plano grátis da ProtonVPN = países fixos e sem escolha manual de servidor.** Não dá para escolher um endpoint específico, apenas o país (via `SERVER_COUNTRIES`), e somente entre os países liberados no plano grátis: Canadá, EUA, México, Holanda, Noruega, Polônia, Romênia, Cingapura, Suíça e Japão.
+* **Um dispositivo por vez.** O plano grátis da ProtonVPN aceita apenas uma conexão simultânea. Se o aplicativo oficial estiver conectado em outro lugar, o túnel poderá falhar na autenticação.
 
 ## Pré-requisitos
 
-- Um servidor/computador ligado 24/7 na sua rede (no meu caso, uso um servidor
-  pra outros containers).
-- [Docker](https://get.docker.com) instalado nele.
-- [Portainer CE](https://docs.portainer.io) rodando nesse Docker.
-- Conta grátis na [ProtonVPN](https://protonvpn.com).
-- Uma build de desenvolvimento do [Vencord](https://github.com/Vendicated/Vencord).
+* Um servidor/computador ligado 24/7 na sua rede (no meu caso, uso um servidor para outros containers).
+* [Docker](https://get.docker.com) instalado nele.
+* [Portainer CE](https://docs.portainer.io) rodando nesse Docker.
+* Uma conta grátis na [ProtonVPN](https://protonvpn.com).
+* Uma build de desenvolvimento do [Vencord](https://github.com/Vendicated/Vencord).
 
 ## Passo 1 — Instalar o Portainer (se ainda não tiver)
 
-Acesse [https://docs.portainer.io/start/install-ce/server/docker/linux](https://docs.portainer.io/start/install-ce/server/docker/linux) para instalar o mesmo.
+Acesse https://docs.portainer.io/start/install-ce/server/docker/linux para seguir o processo de instalação.
 
 ## Passo 2 — Pegar as credenciais da ProtonVPN
 
-**Importante:** não use o e-mail/senha normal da sua conta. A Proton gera
-credenciais separadas específicas pra apps de terceiros (o gluetun é um
-deles).
+**Importante:** não use o e-mail e a senha normais da sua conta. A Proton gera credenciais separadas, específicas para aplicativos de terceiros (o Gluetun é um deles).
 
 1. Acesse [account.proton.me/u/0/vpn/OpenVpnIKEv2](https://account.proton.me/u/0/vpn/OpenVpnIKEv2).
-2. Vá em Proton VPN → OpenVPN → Credentials
+2. Vá em **Proton VPN → OpenVPN → Credentials**.
 3. Copie o **OpenVPN username** e a **OpenVPN password** mostrados ali.
-4. Se em algum momento a autenticação começar a falhar sem motivo aparente,
-   volte nessa página e clique em **Reset credentials** pra gerar um novo login.
+4. Se, em algum momento, a autenticação começar a falhar sem motivo aparente, volte a essa página e clique em **Reset credentials** para gerar um novo login.
 
 ## Passo 3 — Criar o stack no Portainer
 
-No Portainer: **Stacks → Add stack**, nome `protonvpn-proxy`, e cole isto no
-**Web editor**:
+No Portainer, vá em **Stacks → Add stack**, dê o nome `protonvpn-proxy` e cole o seguinte no **Web editor**:
 
 ```yaml
 services:
@@ -99,33 +76,31 @@ volumes:
   gluetun_proton_data:
 ```
 
-Troque `OPENVPN_USER` e `OPENVPN_PASSWORD` pelas credenciais do Passo 2, e
-clique em **Deploy the stack**.
+Troque `OPENVPN_USER` e `OPENVPN_PASSWORD` pelas credenciais obtidas no Passo 2 e clique em **Deploy the stack**.
 
 ### As duas variáveis que mais me deram dor de cabeça
 
-- **`FREE_ONLY=on`**
-  sem essa variável, o gluetun pode escolher qualquer
-  servidor do país escolhido, incluindo servidores **pagos**. Como minha
-  conta é grátis, a Proton recusa a autenticação nesses servidores, e o
-  erro que aparece (`AUTH_FAILED`) não deixa isso óbvio.
-- **`SOCKS5_USER` / `SOCKS5_PASSWORD` vazios**
-  o gluetun tem um proxy SOCKS5 embutido que pode pedir usuário/senha,
-  mas o Chromium (motor por trás do Discord/Electron) **não suporta autenticação em proxy SOCKS5**.
-  Se deixar preenchido, o Discord nunca vai conseguir conectar no proxy
-  precisa deixar sem autenticação e confiar só no isolamento da rede local
-  pra segurança.
+* **`FREE_ONLY=on`**
+
+  Sem essa variável, o Gluetun pode escolher qualquer servidor do país selecionado, incluindo servidores **pagos**. Como minha conta é grátis, a Proton recusa a autenticação nesses servidores, e o erro que aparece (`AUTH_FAILED`) não deixa isso tão óbvio.
+
+* **`SOCKS5_USER` / `SOCKS5_PASSWORD` vazios**
+
+  O Gluetun possui um proxy SOCKS5 embutido que pode exigir usuário e senha, mas o Chromium (motor por trás do Discord/Electron) **não suporta autenticação em proxy SOCKS5**.
+
+  Se esses campos forem preenchidos, o Discord não conseguirá se conectar ao proxy. Portanto, deixe-os sem autenticação e confie no isolamento da sua rede local para a segurança.
 
 ## Passo 4 — Testar o proxy antes de mexer no Discord
 
-De qualquer máquina na mesma rede:
+De qualquer máquina na mesma rede, execute:
 
 ```bash
 curl -x socks5h://IP-DO-SERVIDOR:1080 https://ifconfig.me
 ```
 
-Se retornar um IP (e não erro/timeout), o proxy está funcionando. Pra
-confirmar o país:
+Se retornar um IP (e não um erro/timeout), o proxy está funcionando.
+
+Para confirmar o país:
 
 ```bash
 curl -x socks5h://IP-DO-SERVIDOR:1080 https://ipinfo.io
@@ -133,8 +108,7 @@ curl -x socks5h://IP-DO-SERVIDOR:1080 https://ipinfo.io
 
 ## Passo 5 — Instalar o plugin ProxySettings no Vencord
 
-Não existe um plugin oficial pra isso na lista padrão do Vencord, então
-precisa de uma build de dev com o plugin adicionado manualmente.
+Não existe um plugin oficial para isso na lista padrão do Vencord, então é necessário utilizar uma build de desenvolvimento com o plugin adicionado manualmente.
 
 ```bash
 git clone https://github.com/Vendicated/Vencord
@@ -142,62 +116,54 @@ cd Vencord
 pnpm install
 ```
 
-Copie a pasta [`vencord-plugin/ProxySettings`](./vencord-plugin/ProxySettings)
-deste repositório pra dentro de `src/userplugins/` do seu clone do Vencord,
-ficando assim:
+Copie a pasta [`vencord-plugin/ProxySettings`](./vencord-plugin/ProxySettings) deste repositório para dentro de `src/userplugins/` do seu clone do Vencord, ficando assim:
 
-```
+```text
 Vencord/src/userplugins/ProxySettings/index.ts
 Vencord/src/userplugins/ProxySettings/native.ts
 ```
 
-Builda e injeta:
+Faça o build e injete:
 
 ```bash
 pnpm build
 pnpm inject
 ```
-Selecione a versão do seu discord.
 
-Reinicie o Discord por completo (caso não tenha reiniciado sozinho).
+Selecione a versão do seu Discord.
+
+Reinicie o Discord por completo (caso ele não tenha sido reiniciado automaticamente).
 
 ## Passo 6 — Configurar o plugin
 
-No Discord: **Configurações → Vencord → Plugins → ProxySettings** (ícone de
-engrenagem):
+No Discord, vá em **Configurações → Vencord → Plugins → ProxySettings** (ícone de engrenagem):
 
-| Campo | Valor |
-|---|---|
-| Protocol | `socks5` |
-| Host | IP local do servidor (ex: `192.168.1.67`) |
-| Port | `1080` |
-| Username / Password | deixar em branco |
+| Campo               | Valor                                      |
+| ------------------- | ------------------------------------------ |
+| Protocol            | `socks5`                                   |
+| Host                | IP local do servidor (ex.: `192.168.1.67`) |
+| Port                | `1080`                                     |
+| Username / Password | deixar em branco                           |
 
 Ative o toggle **Enabled** e reinicie o Discord.
 
 ## Troubleshooting
 
-**`AUTH_FAILED` no log do gluetun**
-1. Confirme que está usando as credenciais de app terceiro (Passo 2), não
-   login normal.
-2. Confirme que não tem outro dispositivo logado na Proton no momento
-   (plano grátis = 1 conexão só).
-3. Confirme `FREE_ONLY=on` no stack.
-4. Se nada resolver, gere credenciais novas (**Reset credentials**) e
-   espere uns minutos antes de tentar de novo, a Proton segura tentativas
-   repetidas por um tempo.
+**`AUTH_FAILED` no log do Gluetun**
 
-**Discord não conecta / trava carregando com o plugin ativado**
-- Confirme que `SOCKS5_USER` e `SOCKS5_PASSWORD` estão vazios no stack.
-- Confirme com o `curl` do Passo 4 que o proxy está mesmo respondendo antes
-  de suspeitar do plugin.
-- Desative o toggle **Enabled** do plugin pra voltar ao normal enquanto
-  investiga.
-- Feche e abra o discord por completo. 
+1. Confirme que está usando as credenciais para aplicativos de terceiros (Passo 2), e não o login normal.
+2. Confirme que não há outro dispositivo conectado à ProtonVPN no momento (plano grátis = 1 conexão).
+3. Confirme se `FREE_ONLY=on` está presente no stack.
+4. Se nada resolver, gere novas credenciais usando **Reset credentials** e espere alguns minutos antes de tentar novamente. A Proton pode bloquear temporariamente tentativas repetidas.
+
+**Discord não conecta / fica travado carregando com o plugin ativado**
+
+* Confirme que `SOCKS5_USER` e `SOCKS5_PASSWORD` estão vazios no stack.
+* Confirme, usando o `curl` do Passo 4, que o proxy está realmente respondendo antes de suspeitar do plugin.
+* Desative o toggle **Enabled** do plugin para voltar ao funcionamento normal enquanto investiga.
+* Feche e abra o Discord completamente.
 
 ## Créditos
 
-- [Gluetun](https://github.com/qdm12/gluetun), de qdm12, o container que
-  faz o trabalho pesado de conectar na VPN e expor o proxy.
-- [Vencord](https://github.com/Vendicated/Vencord), o client mod que
-  torna esse plugin possível.
+* [Gluetun](https://github.com/qdm12/gluetun), de qdm12, o container que faz o trabalho pesado de conectar à VPN e expor o proxy.
+* [Vencord](https://github.com/Vendicated/Vencord), o client mod que torna esse plugin possível.
